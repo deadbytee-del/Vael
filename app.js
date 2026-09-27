@@ -12,6 +12,10 @@ kick:svg('<path d="M15 3h4v4M19 3l-7 7"/><path d="M9 5H5a2 2 0 0 0-2 2v10a2 2 0 
 check:svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
 bell:svg('<path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z"/><path d="M9.5 17a2.5 2.5 0 0 0 5 0"/>'),
 home:svg('<path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>'),
+image:svg('<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15l-5-5-9 9"/>'),
+star:svg('<path d="M12 3l2.6 5.7 6.2.6-4.7 4.2 1.4 6.1L12 16.8 6.5 19.6l1.4-6.1-4.7-4.2 6.2-.6z"/>'),
+ticket:svg('<path d="M4 8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z"/><path d="M12 7v2M12 15v2"/>'),
+attach:svg('<path d="M21.5 12.5l-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5L11 18.7a2 2 0 0 1-2.8-2.8l7.8-7.8"/>'),
 send:svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 reply:svg('<path d="M9 14l-5-5 5-5"/><path d="M4 9h9a6 6 0 0 1 6 6v2"/>'),
 trash:svg('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
@@ -65,6 +69,7 @@ window.addEventListener("hashchange",render)
 window.addEventListener("online",()=>{toast("Back online");flushOutbox()})
 window.addEventListener("offline",()=>toast("You're offline. Messages will send once you're back."))
 pruneLocalMessages(10).catch(()=>{})
+loadAppearance()
 await loadIdentity()
 render()
 }
@@ -134,6 +139,7 @@ code.onkeydown=e=>{if(e.key==="Enter")submit()}
 function currentRoute(){
 const h=(location.hash.slice(1)||"").split("/").filter(Boolean)
 if(h[0]==="home")return{name:"home"}
+if(h[0]==="tickets")return{name:"tickets"}
 if(h[0]==="c"&&h[1])return{name:"channel",channel:h[1]}
 if(h[0]==="dm"&&h[1])return{name:"dm",withName:h[1]}
 if(h[0]==="settings")return{name:"settings",tab:h[1]||"profile"}
@@ -153,7 +159,7 @@ app.append(el("div","shell",`
 <button class="mobiletoggle" id="mobiletoggle">${ICONS.menu}</button>
 <div class="sidebar" id="sidebar">
 <div class="sidebar-scroll">
-<div class="navlist" style="padding:12px 8px 4px"><a class="navitem" href="#/home" id="homelink">${ICONS.home}<span>Home</span></a></div>
+<div class="navlist" style="padding:12px 8px 4px"><a class="navitem" href="#/home" id="homelink">${ICONS.home}<span>Home</span></a><a class="navitem" href="#/tickets" id="ticketslink">${ICONS.ticket}<span>Tickets</span></a></div>
 <div id="channelgroups"></div>
 <div class="navgroup"><div class="navgroup-head"><h4>Direct messages</h4><button class="addbtn" id="newdm">${ICONS.plus}</button></div><div class="navlist" id="dmnav"></div></div>
 </div>
@@ -260,6 +266,7 @@ return rest.slice(0,rest.length-low.length-1)
 }
 function renderNav(){
 if($("#homelink"))$("#homelink").classList.toggle("on",state.route.name==="home")
+if($("#ticketslink"))$("#ticketslink").classList.toggle("on",state.route.name==="tickets")
 const groups={}
 state.channels.forEach(c=>{
 const meta=CHANNEL_META[c.name]||{label:c.name,icon:"chat",group:"Other"}
@@ -301,6 +308,13 @@ const el=$("#topstatus")
 if(!el)return
 if(up)el.innerHTML=`<span class="tled on"></span>${state.status.playerCount}/${state.status.maxPlayers} online`
 else el.innerHTML=`<span class="tled warn"></span>Offline · P2P ${p2pCount()}`
+}
+function renderTickets(main){
+main.innerHTML=`<div class="homewrap">
+<h1 class="homehi">Support tickets</h1>
+<p class="homesub">Need help, want to report a player, or suggest a feature? Open a ticket on the VaelKits ticket site.</p>
+<a class="ticketcard" href="${TICKETS_URL}" target="_blank" rel="noopener"><span class="ico">${ICONS.ticket}</span><div><b>Open the ticket system</b><small>${esc(TICKETS_URL.replace(/^https?:\/\//,""))}</small></div>${ICONS.send}</a>
+</div>`
 }
 function renderHomeTiles(){
 const grid=$("#hometiles")
@@ -406,6 +420,7 @@ const main=$("#main")
 main.innerHTML=""
 clearViewTimer()
 if(state.route.name==="home"){renderHome(main);return}
+if(state.route.name==="tickets"){renderTickets(main);return}
 if(state.route.name==="settings"){renderSettings(main,state.route.tab);return}
 if(state.route.name==="dm"){renderConversation(main,store_dm_channel(state.route.withName),state.route.withName,true);return}
 renderConversation(main,state.route.channel,null,false)
@@ -461,11 +476,20 @@ function scrollBottom(){
 const m=$("#msgs")
 if(m)m.scrollTop=m.scrollHeight
 }
+function detectEmbed(text){
+let m
+if((m=text.match(/https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/)))return{type:"youtube",url:m[0]}
+if((m=text.match(/https?:\/\/(?:www\.|vm\.)?tiktok\.com\/[^\s]+/)))return{type:"tiktok",url:m[0]}
+if((m=text.match(/https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[^\s]+/)))return{type:"instagram",url:m[0]}
+if((m=text.match(/https?:\/\/(?:www\.)?(?:discord\.gg|discord\.com\/invite)\/([\w-]+)/)))return{type:"discord",url:m[0],code:m[1]}
+return null
+}
 function renderMessages(list,channel){
 const box=$("#msgs")
 if(!box)return
 if(!list.length){box.innerHTML=`<div class="empty-chan">${ICONS.chat}<b>Nothing here yet</b>Be the first to say something.</div>`;return}
 let html="",lastDay=null,lastAuthor=null
+const embeds=[]
 for(const m of list){
 if(!lastDay||!sameDay(m.ts,lastDay)){html+=`<div class="daydiv">${dayFmt(m.ts)}</div>`;lastAuthor=null}
 lastDay=m.ts
@@ -473,12 +497,48 @@ const staffTag=state.staffList&&state.staffList.includes(m.authorName.toLowerCas
 const replyLine=m.replyTo?renderReplyLine(list,m.replyTo):""
 const reactions=renderReactions(m,channel)
 const grouped=lastAuthor===m.authorName&&!m.replyTo
-html+=`<div class="msg${m.pinned?" pinnedmsg":""}" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}" data-profile="${esc(m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><button class="name${staffTag?" staff":""}" data-profile="${esc(m.authorName)}">${esc(m.authorName)}</button><span class="time">${timeFmt(m.ts)}</span>${m.pinned?`<span class="pinbadge">${ICONS.pin}Pinned</span>`:""}</div>`}<div class="text">${linkify(m.content)}</div>${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
+const attach=m.attachment?`<a href="${esc(m.attachment)}" target="_blank" rel="noopener" class="msgattach"><img src="${esc(m.attachment)}" loading="lazy"></a>`:""
+const emb=detectEmbed(m.content||"")
+const embedHtml=emb?`<div class="embedbox" id="embed-${m.id}"><div class="embedloading">Loading preview…</div></div>`:""
+if(emb)embeds.push({id:m.id,...emb})
+html+=`<div class="msg${m.pinned?" pinnedmsg":""}" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}" data-profile="${esc(m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><button class="name${staffTag?" staff":""}" data-profile="${esc(m.authorName)}">${esc(m.authorName)}</button><span class="time">${timeFmt(m.ts)}</span>${m.pinned?`<span class="pinbadge">${ICONS.pin}Pinned</span>`:""}</div>`}<div class="text">${linkify(m.content)}</div>${attach}${embedHtml}${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
 lastAuthor=m.authorName}
 box.innerHTML=html
 bindMessageActions(box,channel)
 box.querySelectorAll("[data-profile]").forEach(b=>b.onclick=()=>openProfilePopover(b.dataset.profile,b))
+embeds.forEach(loadEmbed)
 }
+async function loadEmbed(e){
+const box=document.getElementById("embed-"+e.id)
+if(!box)return
+if(e.type==="instagram"){
+box.innerHTML=`<a href="${esc(e.url)}" target="_blank" rel="noopener" class="embedcard row plain"><div class="embedicon">${ICONS.image}</div><div class="embedbody"><span class="embedkind">Instagram</span><small>Preview isn't available without an API key — tap to open</small></div></a>`
+return}
+try{
+if(e.type==="youtube"){
+const r=await fetch("https://www.youtube.com/oembed?format=json&url="+encodeURIComponent(e.url))
+if(!r.ok)throw 0
+const d=await r.json()
+box.innerHTML=`<a href="${esc(e.url)}" target="_blank" rel="noopener" class="embedcard"><img src="${esc(d.thumbnail_url)}" class="embedthumb"><div class="embedbody"><span class="embedkind">${ICONS.image} YouTube</span><b>${esc(d.title)}</b><small>${esc(d.author_name||"")}</small></div></a>`
+return}
+if(e.type==="tiktok"){
+const r=await fetch("https://www.tiktok.com/oembed?url="+encodeURIComponent(e.url))
+if(!r.ok)throw 0
+const d=await r.json()
+box.innerHTML=`<a href="${esc(e.url)}" target="_blank" rel="noopener" class="embedcard"><img src="${esc(d.thumbnail_url)}" class="embedthumb"><div class="embedbody"><span class="embedkind">${ICONS.star} TikTok</span><b>${esc(d.title||"")}</b><small>${esc(d.author_name||"")}</small></div></a>`
+return}
+if(e.type==="discord"){
+const r=await fetch("https://discord.com/api/v10/invites/"+encodeURIComponent(e.code)+"?with_counts=true")
+if(!r.ok)throw 0
+const d=await r.json()
+const icon=d.guild&&d.guild.icon?`https://cdn.discordapp.com/icons/${d.guild.id}/${d.guild.icon}.png`:null
+box.innerHTML=`<a href="${esc(e.url)}" target="_blank" rel="noopener" class="embedcard row"><div class="embedicon">${icon?`<img src="${icon}">`:ICONS.chat}</div><div class="embedbody"><span class="embedkind">Discord server</span><b>${esc(d.guild?d.guild.name:"Invite")}</b><small>${d.approximate_member_count?d.approximate_member_count+" members":""}</small></div></a>`
+return}
+throw 0
+}catch(err){
+const label=e.type==="youtube"?"YouTube":e.type==="tiktok"?"TikTok":"Discord"
+box.innerHTML=`<a href="${esc(e.url)}" target="_blank" rel="noopener" class="embedcard row plain"><div class="embedicon">${ICONS.send}</div><div class="embedbody"><span class="embedkind">${label}</span><small>${esc(e.url)}</small></div></a>`
+}}
 function renderReplyLine(list,replyTo){
 const src=list.find(x=>x.id===replyTo)
 if(!src)return `<div class="reply">${ICONS.reply}replying to a message</div>`
@@ -563,19 +623,31 @@ $("#cancelreply").onclick=()=>{replyTarget=null;renderReplyBar()}
 function buildComposer(channel,canWrite){
 const box=$("#composer")
 if(!canWrite){box.innerHTML=`<div class="cbox" style="opacity:.6">${ICONS.lock}<span style="color:var(--dim);font-size:14px">Only staff can post here</span></div>`;return}
-box.innerHTML=`<div class="cbox top" id="cbox"><textarea id="ta" placeholder="Message ${channel.startsWith("dm-")?"":"#"+channel}" rows="1"></textarea><button class="send" id="sendbtn">${ICONS.send}</button></div><div class="muted-line hidden" id="mutedline">You're muted right now.</div>`
+box.innerHTML=`<div id="attachpreview"></div><div class="cbox top" id="cbox"><button class="attachbtn" id="attachbtn" title="Attach an image">${ICONS.attach}</button><input type="file" id="attachinput" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden"><textarea id="ta" placeholder="Message ${channel.startsWith("dm-")?"":"#"+channel}" rows="1"></textarea><button class="send" id="sendbtn">${ICONS.send}</button></div><div class="muted-line hidden" id="mutedline">You're muted right now.</div>`
 renderReplyBar()
-const ta=$("#ta"),send=$("#sendbtn")
+const ta=$("#ta"),send=$("#sendbtn"),attachBtn=$("#attachbtn"),attachInput=$("#attachinput"),preview=$("#attachpreview")
+let stagedFile=null,stagedPreviewUrl=null
 getDraft(channel).then(d=>{if(d)ta.value=d})
 ta.oninput=()=>{ta.style.height="auto";ta.style.height=Math.min(140,ta.scrollHeight)+"px";setDraft(channel,ta.value)}
 ta.onkeydown=e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();doSend()}}
 send.onclick=doSend
+attachBtn.onclick=()=>attachInput.click()
+attachInput.onchange=()=>{
+const f=attachInput.files[0]
+if(!f)return
+if(f.size>6*1048576){toast("That image is too big (6 MB max)");attachInput.value="";return}
+stagedFile=f
+stagedPreviewUrl=URL.createObjectURL(f)
+preview.innerHTML=`<div class="stagedimg"><img src="${stagedPreviewUrl}"><button id="unstagebtn">${ICONS.x}</button></div>`
+$("#unstagebtn").onclick=()=>{URL.revokeObjectURL(stagedPreviewUrl);stagedFile=null;preview.innerHTML="";attachInput.value=""}}
 async function doSend(){
 const content=ta.value.trim()
-if(!content)return
+if(!content&&!stagedFile)return
 const replyTo=replyTarget?replyTarget.id:null
+const fileToSend=stagedFile
 ta.value="";ta.style.height="auto";setDraft(channel,"")
 replyTarget=null;renderReplyBar()
+stagedFile=null;preview.innerHTML=""
 if(!navigator.onLine||state.p2pActive){
 const localId=await queueOutbox(channel,content,replyTo)
 const msg={id:"p2p-"+localId,ts:Date.now(),authorName:state.link.name,authorUuid:state.link.uuid||"",content,replyTo,edited:false,reactions:{}}
@@ -590,15 +662,21 @@ appendPendingMessage(channel,{content,replyTo,ts:Date.now()})
 return}
 send.disabled=true
 try{
-const msg=await postMessage(channel,content,replyTo)
+let attachment=null
+if(fileToSend){
+send.innerHTML=`<span class="spin"></span>`
+const up=await uploadImage(fileToSend)
+attachment=(await apiBase())+up.url}
+const msg=await postMessage(channel,content||"",replyTo,attachment)
 await cacheMessages(channel,[msg])
 renderMessages(await getCachedMessages(channel,300),channel)
 scrollBottom()
 }catch(e){
 if(e.code==="muted"){$("#mutedline").classList.remove("hidden")}
-else{await queueOutbox(channel,content,replyTo);appendPendingMessage(channel,{content,replyTo,ts:Date.now()});toast("Couldn't send. It'll retry when you're back online.")}
+else{await queueOutbox(channel,content,replyTo);appendPendingMessage(channel,{content,replyTo,ts:Date.now()});toast(e.code==="file_too_large"?"That image is too big to upload.":"Couldn't send. It'll retry when you're back online.")}
 }
-send.disabled=false}
+send.disabled=false
+send.innerHTML=ICONS.send}
 }
 function appendPendingMessage(channel,o){
 const box=$("#msgs")
@@ -654,17 +732,50 @@ location.hash="#/dm/"+it.dataset.n}
 }).catch(()=>{$("#plist").innerHTML=`<div style="padding:12px;color:var(--dim)">Couldn't load players</div>`})
 }
 function renderSettings(main,tab){
-const tabs=[["profile","Profile"],["passkeys","Passkeys"],["notifications","Notifications"],["privacy","Privacy"],["data","Local data"]]
+const tabs=[["profile","Profile"],["appearance","Appearance"],["passkeys","Passkeys"],["notifications","Notifications"],["privacy","Privacy"],["data","Local data"]]
 if(state.staff)tabs.push(["staff","Staff"])
 main.innerHTML=`<div class="chead"><b>Settings</b><span class="sp"></span><a href="#/c/general" class="navitem" style="width:auto;padding:6px 10px">${ICONS.back}Back to chat</a></div><div class="settings-wrap"><div class="stabs">${tabs.map(([k,l])=>`<button data-t="${k}" class="${tab===k?"on":""}">${l}</button>`).join("")}</div><div class="spane" id="spane"></div></div>`
 main.querySelectorAll(".stabs button").forEach(b=>b.onclick=()=>{location.hash="#/settings/"+b.dataset.t})
 const pane=$("#spane")
 if(tab==="profile")return settingsProfile(pane)
+if(tab==="appearance")return settingsAppearance(pane)
 if(tab==="passkeys")return settingsPasskeys(pane)
 if(tab==="notifications")return settingsNotifications(pane)
 if(tab==="privacy")return settingsPrivacy(pane)
 if(tab==="data")return settingsData(pane)
 if(tab==="staff")return settingsStaff(pane)
+}
+const ACCENTS=[["#3c2f51","Muted violet"],["#2f4d51","Deep teal"],["#4d2f2f","Muted rust"],["#2f3a51","Slate blue"],["#4a3f2f","Warm bronze"]]
+function settingsAppearance(pane){
+Promise.all([getSetting("accent",ACCENTS[0][0]),getSetting("density","comfortable"),getSetting("reduce_motion",false)]).then(([accent,density,reduceMotion])=>{
+pane.innerHTML=`<h2>Appearance</h2><p class="sub">Make Vael look the way you want.</p>
+<div class="field"><label>Accent color</label><div class="swatches" id="swatches">${ACCENTS.map(([c,n])=>`<button class="swatch${c===accent?" on":""}" data-c="${c}" style="background:${c}" title="${n}"></button>`).join("")}</div></div>
+<div class="field"><label>Message density</label><div class="segtoggle" id="densitytoggle"><button data-d="comfortable" class="${density==="comfortable"?"on":""}">Comfortable</button><button data-d="compact" class="${density==="compact"?"on":""}">Compact</button></div></div>
+<div class="toggle"><div><b>Reduce motion</b><small>Turns off animations in Vael, regardless of your system setting</small></div><button class="switch${reduceMotion?" on":""}" id="motiontoggle"><i></i></button></div>`
+$("#swatches").querySelectorAll(".swatch").forEach(b=>b.onclick=async()=>{
+await setSetting("accent",b.dataset.c)
+applyAccent(b.dataset.c)
+pane.querySelectorAll(".swatch").forEach(s=>s.classList.remove("on"))
+b.classList.add("on")})
+$("#densitytoggle").querySelectorAll("button").forEach(b=>b.onclick=async()=>{
+await setSetting("density",b.dataset.d)
+applyDensity(b.dataset.d)
+pane.querySelectorAll("#densitytoggle button").forEach(x=>x.classList.remove("on"))
+b.classList.add("on")})
+$("#motiontoggle").onclick=async()=>{
+const next=!reduceMotion
+await setSetting("reduce_motion",next)
+applyReduceMotion(next)
+settingsAppearance(pane)}
+})}
+function applyAccent(c){document.documentElement.style.setProperty("--primary",c)}
+function applyDensity(d){document.body.classList.toggle("compact",d==="compact")}
+function applyReduceMotion(on){document.body.classList.toggle("force-reduce-motion",on)}
+async function loadAppearance(){
+const[accent,density,reduceMotion]=await Promise.all([getSetting("accent",null),getSetting("density","comfortable"),getSetting("reduce_motion",false)])
+if(accent)applyAccent(accent)
+applyDensity(density)
+applyReduceMotion(reduceMotion)
 }
 function settingsProfile(pane){
 pane.innerHTML=`<h2>Profile</h2><p class="sub">How you show up in Vael.</p>
@@ -772,7 +883,11 @@ pane.innerHTML=`<h2>Staff tools</h2><p class="sub">Moderation actions for VaelKi
 <button class="btn dan" id="clearbtn" style="width:auto;padding:9px 16px">Clear channel</button>
 <div class="hr"></div>
 <div style="display:flex;align-items:center;margin-bottom:10px"><h3 style="font-size:15px;flex:1">Reports</h3><button class="btn sec" id="toggleall" style="width:auto;padding:6px 12px;font-size:13px">Show resolved</button></div>
-<div id="reportlist" class="sub">Loading...</div>`
+<div id="reportlist" class="sub">Loading...</div>
+<div class="hr"></div>
+<h3 style="font-size:15px;margin-bottom:6px">Possible alt accounts</h3>
+<p class="sub" style="margin-bottom:10px">Groups of accounts that have joined from the same connection. Shared wifi or a phone hotspot can trigger this too — use judgment.</p>
+<div id="altlist" class="sub">Loading...</div>`
 $("#mutebtn").onclick=async()=>{
 const n=$("#muten").value.trim()
 if(!n)return
@@ -810,4 +925,7 @@ $("#muteslist").querySelectorAll("[data-un]").forEach(b=>b.onclick=async()=>{awa
 }).catch(()=>{$("#muteslist").textContent="Couldn't load mutes."})}
 loadMutes()
 loadReports()
+getAltClusters().then(clusters=>{
+$("#altlist").innerHTML=clusters.length?clusters.map(names=>`<div class="rowitem"><div class="rt">${names.map(n=>esc(n)).join(" <span style=\"color:var(--dim2)\">·</span> ")}</div></div>`).join(""):`<div class="sub">No overlapping connections spotted.</div>`
+}).catch(()=>{$("#altlist").textContent="Couldn't load."})
 }

@@ -281,10 +281,11 @@ const staffTag=state.staffList&&state.staffList.includes(m.authorName.toLowerCas
 const replyLine=m.replyTo?renderReplyLine(list,m.replyTo):""
 const reactions=renderReactions(m,channel)
 const grouped=lastAuthor===m.authorName&&!m.replyTo
-html+=`<div class="msg" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><span class="name${staffTag?" staff":""}">${esc(m.authorName)}</span><span class="time">${timeFmt(m.ts)}</span></div>`}<div class="text">${linkify(m.content)}</div>${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
+html+=`<div class="msg" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}" data-profile="${esc(m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><button class="name${staffTag?" staff":""}" data-profile="${esc(m.authorName)}">${esc(m.authorName)}</button><span class="time">${timeFmt(m.ts)}</span></div>`}<div class="text">${linkify(m.content)}</div>${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
 lastAuthor=m.authorName}
 box.innerHTML=html
 bindMessageActions(box,channel)
+box.querySelectorAll("[data-profile]").forEach(b=>b.onclick=()=>openProfilePopover(b.dataset.profile,b))
 }
 function renderReplyLine(list,replyTo){
 const src=list.find(x=>x.id===replyTo)
@@ -320,6 +321,22 @@ try{await reportMessage(channel,b.dataset.mid,"reported from Vael");toast("Repor
 async function pokeChannel(channel){
 const since=0
 try{const fresh=await getMessages(channel,since,300);await cacheMessages(channel,fresh);renderMessages(await getCachedMessages(channel,300),channel)}catch(e){}
+}
+function openProfilePopover(name,anchor){
+document.querySelectorAll(".profpop").forEach(p=>p.remove())
+if(name.toLowerCase()===state.link.name.toLowerCase())return
+const r=anchor.getBoundingClientRect()
+const pop=el("div","profpop",`<div class="ph"><img src="${mcHead(name)}"><b>${esc(name)}</b></div><div class="msgline">Loading…</div>`)
+pop.style.top=(r.bottom+window.scrollY+6)+"px"
+pop.style.left=Math.min(r.left+window.scrollX,window.innerWidth-256)+"px"
+document.body.append(pop)
+const close=e=>{if(!pop.contains(e.target)){pop.remove();document.removeEventListener("pointerdown",close)}}
+setTimeout(()=>document.addEventListener("pointerdown",close),10)
+getVaelKitsProfile(name).then(p=>{
+pop.innerHTML=`<div class="ph"><img src="${mcHead(name)}"><b>${esc(name)}</b></div><div class="stat"><span>Coins</span><b>${p.coins}</b></div><div class="stat"><span>Kills / Deaths</span><b>${p.kills} / ${p.deaths}</b></div><div class="stat"><span>Prestige</span><b>${p.prestige}</b></div>${p.bounty?`<div class="stat"><span>Bounty</span><b>${p.bounty}</b></div>`:""}${p.streak>1?`<div class="stat"><span>Streak</span><b>${p.streak}</b></div>`:""}<a class="dmbtn" href="#/dm/${encodeURIComponent(name)}">Message</a>`
+}).catch(e=>{
+pop.innerHTML=`<div class="ph"><img src="${mcHead(name)}"><b>${esc(name)}</b></div><div class="msgline">${e.code==="vaelkits_not_installed"?"VaelKits isn't running on this server.":"Couldn't load their stats."}</div><a class="dmbtn" href="#/dm/${encodeURIComponent(name)}">Message</a>`
+})
 }
 function quickReact(mid,channel){
 const emojis=["👍","❤️","😂","😮","😢","🎉"]

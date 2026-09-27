@@ -23,6 +23,7 @@ return data
 async function getStatus(){return apiFetch("/api/status")}
 async function getPlayers(){return apiFetch("/api/players")}
 async function getMembers(){return apiFetch("/api/members")}
+async function getVaelKitsProfile(name){return apiFetch("/api/vaelkits/"+encodeURIComponent(name))}
 async function getChannels(){return apiFetch("/api/channels")}
 async function getMessages(channel,since,limit){
 const q=new URLSearchParams()

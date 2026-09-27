@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE=""
+const DEFAULT_API_BASE="https://vaelkits.minekeep.dev:2053"
 const SERVER_IP="play.vaelkits.net"
 const CHANNEL_META={
 general:{label:"General",desc:"Talk about anything VaelKits.",icon:"chat"},

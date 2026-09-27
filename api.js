@@ -46,4 +46,13 @@ async function startDm(withName){return apiFetch("/api/dms/start",{method:"POST"
 async function redeemLink(code){return apiFetch("/api/link/redeem",{method:"POST",body:JSON.stringify({code})})}
 async function reportMessage(channel,id,reason){return apiFetch("/api/reports",{method:"POST",body:JSON.stringify({channel,messageId:id,reason})})}
 async function muteUser(name,minutes){return apiFetch("/api/mute",{method:"POST",body:JSON.stringify({name,minutes})})}
-async function getReports(){return apiFetch("/api/reports")}
+async function getMutes(){return apiFetch("/api/mutes")}
+async function unmuteUser(name){return apiFetch("/api/unmute",{method:"POST",body:JSON.stringify({name})})}
+async function kickPlayer(name,reason){return apiFetch("/api/kick",{method:"POST",body:JSON.stringify({name,reason})})}
+async function unlinkUser(name){return apiFetch("/api/unlink",{method:"POST",body:JSON.stringify({name})})}
+async function clearChannel(channel){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages",{method:"DELETE"})}
+async function pinMessage(channel,id){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages/"+encodeURIComponent(id)+"/pin",{method:"POST"})}
+async function unpinMessage(channel,id){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages/"+encodeURIComponent(id)+"/pin",{method:"DELETE"})}
+async function getPins(channel){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/pins")}
+async function resolveReport(id){return apiFetch("/api/reports/"+encodeURIComponent(id)+"/resolve",{method:"POST"})}
+async function getReports(all){return apiFetch("/api/reports"+(all?"?all=1":""))}

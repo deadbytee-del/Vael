@@ -58,8 +58,19 @@ a{color:inherit}
 .msg img.av{width:36px;height:36px;border-radius:50%;flex:none;margin-top:2px;background:var(--bg3);object-fit:cover}
 .msg .body{min-width:0;flex:1}
 .msg .hd{display:flex;align-items:baseline;gap:8px}
-.msg .name{font-weight:600;font-size:14.5px}
+.msg .name{font-weight:600;font-size:14.5px;background:none;border:0;padding:0;color:inherit;cursor:pointer;font-family:inherit}
+.msg .name:hover{text-decoration:underline}
+img.av[data-profile]{cursor:pointer}
 .msg .name.staff{color:#b9a4dc}
+.profpop{position:absolute;z-index:25;width:240px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.profpop .ph{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.profpop .ph img{width:38px;height:38px;border-radius:50%;background:var(--bg3)}
+.profpop .ph b{font-size:15px;font-weight:600}
+.profpop .stat{display:flex;justify-content:space-between;padding:4px 0;font-size:13px;color:var(--dim)}
+.profpop .stat b{color:var(--text);font-weight:600}
+.profpop .msgline{color:var(--dim);font-size:13px;text-align:center;padding:6px 0}
+.profpop .dmbtn{width:100%;margin-top:8px;padding:8px;border-radius:8px;background:var(--primary);font-size:13px;font-weight:600;text-align:center}
+.profpop .dmbtn:hover{background:var(--primary-l)}
 .msg .time{color:var(--dim2);font-size:11.5px}
 .msg .text{font-size:14.5px;white-space:pre-wrap;word-break:break-word;color:var(--text)}
 .msg .text code{background:var(--bg3);padding:1px 5px;border-radius:4px;font:13px var(--mono)}

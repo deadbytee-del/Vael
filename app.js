@@ -6,6 +6,10 @@ idea:svg('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.5.4.9 1 
 trade:svg('<path d="M7 8l3-3 3 3M10 5v10M17 16l-3 3-3-3"/><path d="M14 19V9"/>'),
 megaphone:svg('<path d="M3 10v4l4 1 9 4V5l-9 4z"/><path d="M8 15v4a2 2 0 0 0 4 0v-3"/>'),
 shield:svg('<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>'),
+bug:svg('<rect x="8" y="8" width="8" height="12" rx="4"/><path d="M12 8V4M8 12H4M16 12h4M8.5 17L5 19M15.5 17l3.5 2M9 5l1.5 2M15 5l-1.5 2"/>'),
+pin:svg('<path d="M12 2l3 3-1.5 5L19 15l-6 1-4 6-1-6-5-1 5-4.5L9.5 4z"/>'),
+kick:svg('<path d="M15 3h4v4M19 3l-7 7"/><path d="M9 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>'),
+check:svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
 send:svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 reply:svg('<path d="M9 14l-5-5 5-5"/><path d="M4 9h9a6 6 0 0 1 6 6v2"/>'),
 trash:svg('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
@@ -24,7 +28,7 @@ key:svg('<circle cx="8" cy="12" r="4"/><path d="M11 12h10M17 12v4M21 12v3"/>'),
 back:svg('<path d="M15 6l-6 6 6 6"/>'),
 menu:svg('<path d="M4 6h16M4 12h16M4 18h16"/>')
 }
-const state={puterUser:null,link:null,profile:{displayName:"",bio:""},avatar:null,channels:[],dms:[],status:{online:false,playerCount:0,maxPlayers:0,version:""},players:[],staff:false,route:{name:"gate"},pollTimers:[]}
+const state={puterUser:null,link:null,profile:{displayName:"",bio:""},avatar:null,channels:[],dms:[],status:{online:false,playerCount:0,maxPlayers:0,version:""},players:[],staff:false,route:{name:"gate"},pollTimers:[],p2pActive:false}
 const $=s=>document.querySelector(s)
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!==undefined)e.innerHTML=h;return e}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))
@@ -58,6 +62,7 @@ async function boot(){
 window.addEventListener("hashchange",render)
 window.addEventListener("online",()=>{toast("Back online");flushOutbox()})
 window.addEventListener("offline",()=>toast("You're offline. Messages will send once you're back."))
+pruneLocalMessages(10).catch(()=>{})
 await loadIdentity()
 render()
 }
@@ -165,11 +170,12 @@ return "data:image/svg+xml;utf8,"+encodeURIComponent(`<svg xmlns='http://www.w3.
 }
 async function refreshChannelsAndDms(){
 try{
-const[chans,dms,players]=await Promise.all([getChannels(),listDms(),getPlayers()])
+const[chans,dms,players,members]=await Promise.all([getChannels(),listDms(),getPlayers(),getMembers()])
 state.channels=chans
 state.dms=dms.map(id=>otherFromDm(id,state.link.name))
 state.players=players
 state.staff=chans.some(c=>c.name==="staff")
+cacheMembers(Array.from(new Set(members.map(m=>m.name).concat(state.dms))))
 renderNav()
 if(state.route&&(state.route.name==="channel"||state.route.name==="dm")){
 const ch=state.route.name==="dm"?store_dm_channel(state.route.withName):state.route.channel
@@ -208,14 +214,50 @@ function startStatusPoll(){
 const tick=async()=>{
 try{
 state.status=await getStatus()
+if(state.p2pActive)exitP2PMode()
 $("#statusbox").innerHTML=`<div class="row1"><span class="led on"></span>${state.status.playerCount}/${state.status.maxPlayers} online</div><div class="meta">${esc(state.status.version||"")}</div><div class="ip"><span>${esc(SERVER_IP)}</span><button title="Copy IP" id="copyip">${ICONS.copy}</button></div>`
 const b=$("#copyip");if(b)b.onclick=()=>{navigator.clipboard.writeText(SERVER_IP).then(()=>toast("Server IP copied"))}
 }catch(e){
-$("#statusbox").innerHTML=`<div class="row1"><span class="led"></span>Server unreachable</div>`
+if(!state.p2pActive)enterP2PMode()
+renderP2PStatus()
 }}
 tick()
 state.pollTimers.push(setInterval(tick,15000))
 state.pollTimers.push(setInterval(refreshChannelsAndDms,20000))
+}
+function renderP2PStatus(){
+const box=$("#statusbox")
+if(!box)return
+const n=p2pCount()
+box.innerHTML=`<div class="row1"><span class="led warn"></span>Server offline</div><div class="meta">Peer-to-peer: ${n} ${n===1?"person":"people"} reachable</div>`
+}
+async function enterP2PMode(){
+state.p2pActive=true
+p2pInit(state.link.name)
+p2p.onMsg=receiveP2PMessage
+p2p.onPresence=()=>renderP2PStatus()
+const cached=await getCachedMembers()
+p2pConnect(cached)
+renderP2PStatus()
+toast("Server's offline. Switched to peer-to-peer with people who are also online.")
+}
+function exitP2PMode(){
+state.p2pActive=false
+p2pTeardown()
+flushOutbox()
+toast("Server's back. Reconnected.")
+}
+async function receiveP2PMessage(data){
+let payload
+try{payload=JSON.parse(data)}catch(e){return}
+if(payload.type!=="msg")return
+const msg={id:payload.id,ts:payload.ts,authorName:payload.authorName,authorUuid:payload.authorUuid||"",content:payload.content,replyTo:payload.replyTo||null,edited:false,reactions:{}}
+await cacheMessages(payload.channel,[msg])
+if(state.route&&((state.route.name==="channel"&&state.route.channel===payload.channel)||(state.route.name==="dm"&&store_dm_channel(state.route.withName)===payload.channel))){
+const wasBottom=isNearBottom()
+renderMessages(await getCachedMessages(payload.channel,300),payload.channel)
+if(wasBottom)scrollBottom()
+}
 }
 function renderMain(){
 state.route=currentRoute()
@@ -241,10 +283,11 @@ const meta=isDm?{label:dmWith,desc:"Direct message"}:(CHANNEL_META[channel]||{la
 const chanRec=state.channels.find(c=>c.name===channel)
 const canWrite=isDm||!(chanRec&&chanRec.readonly)
 main.innerHTML=`
-<div class="chead"><b>${isDm?"":"#"}${esc(meta.label)}</b><span class="d">${esc(meta.desc||"")}</span><span class="sp"></span></div>
+<div class="chead"><b>${isDm?"":"#"}${esc(meta.label)}</b><span class="d">${esc(meta.desc||"")}</span><span class="sp"></span>${isDm?"":`<button id="pinsbtn" title="Pinned messages">${ICONS.pin}</button>`}</div>
 <div class="msgs" id="msgs"></div>
 <div class="composer" id="composer"></div>`
 if(isDm)await startDm(dmWith).catch(()=>{})
+if($("#pinsbtn"))$("#pinsbtn").onclick=()=>openPinsPanel(channel)
 let cached=await getCachedMessages(channel,300)
 renderMessages(cached,channel)
 const outbox=await listOutbox(channel)
@@ -292,7 +335,7 @@ const staffTag=state.staffList&&state.staffList.includes(m.authorName.toLowerCas
 const replyLine=m.replyTo?renderReplyLine(list,m.replyTo):""
 const reactions=renderReactions(m,channel)
 const grouped=lastAuthor===m.authorName&&!m.replyTo
-html+=`<div class="msg" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}" data-profile="${esc(m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><button class="name${staffTag?" staff":""}" data-profile="${esc(m.authorName)}">${esc(m.authorName)}</button><span class="time">${timeFmt(m.ts)}</span></div>`}<div class="text">${linkify(m.content)}</div>${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
+html+=`<div class="msg${m.pinned?" pinnedmsg":""}" data-id="${m.id}" data-author="${esc(m.authorName)}">${grouped?'<div style="width:36px"></div>':`<img class="av" src="${mcHead(m.authorUuid||m.authorName)}" data-profile="${esc(m.authorName)}">`}<div class="body">${replyLine}${grouped?"":`<div class="hd"><button class="name${staffTag?" staff":""}" data-profile="${esc(m.authorName)}">${esc(m.authorName)}</button><span class="time">${timeFmt(m.ts)}</span>${m.pinned?`<span class="pinbadge">${ICONS.pin}Pinned</span>`:""}</div>`}<div class="text">${linkify(m.content)}</div>${reactions}</div><div class="mactions">${msgActions(m,channel)}</div></div>`
 lastAuthor=m.authorName}
 box.innerHTML=html
 bindMessageActions(box,channel)
@@ -315,6 +358,7 @@ function msgActions(m,channel){
 const own=m.authorName.toLowerCase()===state.link.name.toLowerCase()
 let out=`<button data-act="react" data-mid="${m.id}" title="React">${ICONS.smile}</button><button data-act="reply" data-mid="${m.id}" title="Reply">${ICONS.reply}</button>`
 if(!own)out+=`<button data-act="report" data-mid="${m.id}" title="Report">${ICONS.flag}</button>`
+if(state.staff){const pinned=m.pinned;out+=`<button data-act="pin" data-mid="${m.id}" data-pinned="${pinned?1:0}" title="${pinned?"Unpin":"Pin"}" style="${pinned?"color:var(--warn)":""}">${ICONS.pin}</button>`}
 if(own||state.staff)out+=`<button data-act="delete" data-mid="${m.id}" title="Delete">${ICONS.trash}</button>`
 return out
 }
@@ -328,6 +372,10 @@ box.querySelectorAll('[data-act="delete"]').forEach(b=>b.onclick=async()=>{
 try{await deleteMessage(channel,b.dataset.mid);pokeChannel(channel)}catch(e){toast("Couldn't delete that message")}})
 box.querySelectorAll('[data-act="report"]').forEach(b=>b.onclick=async()=>{
 try{await reportMessage(channel,b.dataset.mid,"reported from Vael");toast("Reported to staff")}catch(e){toast("Couldn't send the report")}})
+box.querySelectorAll('[data-act="pin"]').forEach(b=>b.onclick=async()=>{
+const willPin=b.dataset.pinned==="0"
+try{if(willPin)await pinMessage(channel,b.dataset.mid);else await unpinMessage(channel,b.dataset.mid);pokeChannel(channel)}
+catch(e){toast("Couldn't update pin")}})
 }
 async function pokeChannel(channel){
 const since=0
@@ -390,9 +438,17 @@ if(!content)return
 const replyTo=replyTarget?replyTarget.id:null
 ta.value="";ta.style.height="auto";setDraft(channel,"")
 replyTarget=null;renderReplyBar()
-if(!navigator.onLine){
-await queueOutbox(channel,content,replyTo)
+if(!navigator.onLine||state.p2pActive){
+const localId=await queueOutbox(channel,content,replyTo)
+const msg={id:"p2p-"+localId,ts:Date.now(),authorName:state.link.name,authorUuid:state.link.uuid||"",content,replyTo,edited:false,reactions:{}}
+if(state.p2pActive){
+await cacheMessages(channel,[msg])
+renderMessages(await getCachedMessages(channel,300),channel)
+scrollBottom()
+p2pBroadcast({type:"msg",channel,id:msg.id,ts:msg.ts,authorName:msg.authorName,authorUuid:msg.authorUuid,content,replyTo})
+}else{
 appendPendingMessage(channel,{content,replyTo,ts:Date.now()})
+}
 return}
 send.disabled=true
 try{
@@ -429,6 +485,17 @@ if(m.authorName.toLowerCase()===state.link.name.toLowerCase())continue
 const mentioned=new RegExp("@"+state.link.name+"\\b","i").test(m.content)
 if(mentioned&&window.Notification&&Notification.permission==="granted"){
 new Notification(m.authorName+" mentioned you",{body:m.content.slice(0,120)})}}})
+}
+function openPinsPanel(channel){
+const box=el("div","pickr")
+box.innerHTML=`<div class="pickbox"><div class="ph"><b>Pinned in #${esc(channel)}</b><button id="pclose">${ICONS.x}</button></div><div class="picklist" id="pinlist" style="padding:10px">Loading...</div></div>`
+document.body.append(box)
+$("#pclose").onclick=()=>box.remove()
+box.addEventListener("click",e=>{if(e.target===box)box.remove()})
+getPins(channel).then(list=>{
+$("#pinlist").innerHTML=list.length?list.map(m=>`<div class="rowitem" style="align-items:flex-start"><div class="rt"><b>${esc(m.authorName)}</b><small>${esc(m.content.slice(0,140))}</small></div>${state.staff?`<button data-unpin="${esc(m.id)}" class="btn sec" style="width:auto;padding:6px 10px">Unpin</button>`:""}</div>`).join(""):`<div class="sub" style="padding:6px">Nothing pinned yet.</div>`
+$("#pinlist").querySelectorAll("[data-unpin]").forEach(b=>b.onclick=async()=>{await unpinMessage(channel,b.dataset.unpin);box.remove();pokeChannel(channel)})
+}).catch(()=>{$("#pinlist").textContent="Couldn't load pinned messages."})
 }
 function openDmPicker(){
 const box=el("div","pickr")
@@ -546,16 +613,63 @@ await db.messages.clear();await db.outbox.clear();await db.drafts.clear()
 toast("Local cache cleared")}
 }
 function settingsStaff(pane){
-pane.innerHTML=`<h2>Staff tools</h2><p class="sub">Mute a player or review reports.</p>
-<div class="field"><label>Mute player</label><input id="muten" placeholder="Username"></div>
-<div class="field"><label>Minutes</label><input id="mutem" value="15" type="number"></div>
+pane.innerHTML=`<h2>Staff tools</h2><p class="sub">Moderation actions for VaelKits staff.</p>
+<h3 style="font-size:15px;margin-bottom:10px">Mute</h3>
+<div class="fields" style="margin-bottom:10px"><div class="fld"><label>Player</label><input id="muten" placeholder="Username"></div><div class="fld"><label>Minutes</label><input id="mutem" value="15" type="number"></div></div>
 <button class="btn dan" id="mutebtn" style="width:auto;padding:9px 16px">Mute</button>
-<div class="hr"></div><h2 style="font-size:16px">Recent reports</h2><div id="reportlist" class="sub">Loading...</div>`
+<div id="muteslist" class="sub" style="margin-top:14px">Loading active mutes...</div>
+<div class="hr"></div>
+<h3 style="font-size:15px;margin-bottom:10px">Kick from server</h3>
+<div class="fields" style="margin-bottom:10px"><div class="fld"><label>Player</label><input id="kickn" placeholder="Username"></div><div class="fld"><label>Reason</label><input id="kickr" placeholder="Optional"></div></div>
+<button class="btn dan" id="kickbtn" style="width:auto;padding:9px 16px">Kick</button>
+<div class="hr"></div>
+<h3 style="font-size:15px;margin-bottom:10px">Unlink account</h3>
+<p class="sub" style="margin-bottom:10px">Forces someone to re-run /vaellink to use Vael again.</p>
+<div class="field"><label>Player</label><input id="unlinkn" placeholder="Username"></div>
+<button class="btn dan" id="unlinkbtn" style="width:auto;padding:9px 16px">Unlink</button>
+<div class="hr"></div>
+<h3 style="font-size:15px;margin-bottom:10px">Clear a channel</h3>
+<p class="sub" style="margin-bottom:10px">Deletes every message in a channel. Pinned messages are kept.</p>
+<div class="field"><label>Channel</label><select id="clearch">${state.channels.map(c=>`<option value="${c.name}">${esc((CHANNEL_META[c.name]||{label:c.name}).label)}</option>`).join("")}</select></div>
+<button class="btn dan" id="clearbtn" style="width:auto;padding:9px 16px">Clear channel</button>
+<div class="hr"></div>
+<div style="display:flex;align-items:center;margin-bottom:10px"><h3 style="font-size:15px;flex:1">Reports</h3><button class="btn sec" id="toggleall" style="width:auto;padding:6px 12px;font-size:13px">Show resolved</button></div>
+<div id="reportlist" class="sub">Loading...</div>`
 $("#mutebtn").onclick=async()=>{
-try{await muteUser($("#muten").value.trim(),parseInt($("#mutem").value||"15",10));toast("Muted")}
+const n=$("#muten").value.trim()
+if(!n)return
+try{await muteUser(n,parseInt($("#mutem").value||"15",10));toast("Muted "+n);$("#muten").value="";loadMutes()}
 catch(e){toast("Couldn't mute")}}
-getReports().then(list=>{
-const r=list.slice(-30).reverse()
-$("#reportlist").innerHTML=r.length?r.map(x=>`<div class="rowitem"><div class="rt"><b>${esc(x.channel)}</b><small>reported by ${esc(x.reporter)} · ${esc(x.reason||"")}</small></div></div>`).join(""):"No reports yet."
-}).catch(()=>{$("#reportlist").textContent="Couldn't load reports."})
+$("#kickbtn").onclick=async()=>{
+const n=$("#kickn").value.trim()
+if(!n)return
+try{await kickPlayer(n,$("#kickr").value.trim()||undefined);toast("Kicked "+n);$("#kickn").value="";$("#kickr").value=""}
+catch(e){toast("Couldn't kick")}}
+$("#unlinkbtn").onclick=async()=>{
+const n=$("#unlinkn").value.trim()
+if(!n)return
+if(!confirm("Unlink "+n+"? They'll need to run /vaellink again."))return
+try{await unlinkUser(n);toast("Unlinked "+n);$("#unlinkn").value=""}
+catch(e){toast("Couldn't unlink")}}
+$("#clearbtn").onclick=async()=>{
+const ch=$("#clearch").value
+if(!confirm("Clear all messages in #"+ch+"? This can't be undone."))return
+try{await clearChannel(ch);await db.messages.where("channel").equals(ch).delete();toast("Cleared #"+ch)}
+catch(e){toast("Couldn't clear channel")}}
+let showAll=false
+function loadReports(){
+$("#reportlist").textContent="Loading..."
+getReports(showAll).then(list=>{
+const r=list.slice(-40).reverse()
+$("#reportlist").innerHTML=r.length?r.map(x=>`<div class="rowitem"><div class="rt"><b>#${esc(x.channel)}</b>${x.resolved?' <span class="tag ok">Resolved</span>':""}<small>reported by ${esc(x.reporter)} · ${esc(x.reason||"")}</small></div>${x.resolved?"":`<button data-rid="${esc(x.id)}" class="btn sec" style="width:auto;padding:6px 10px">Resolve</button>`}</div>`).join(""):"Nothing here."
+$("#reportlist").querySelectorAll("[data-rid]").forEach(b=>b.onclick=async()=>{await resolveReport(b.dataset.rid);loadReports()})
+}).catch(()=>{$("#reportlist").textContent="Couldn't load reports."})}
+$("#toggleall").onclick=()=>{showAll=!showAll;$("#toggleall").textContent=showAll?"Show unresolved":"Show resolved";loadReports()}
+function loadMutes(){
+getMutes().then(list=>{
+$("#muteslist").innerHTML=list.length?list.map(m=>`<div class="rowitem"><div class="rt"><b>${esc(m.name)}</b><small>${m.remainingMinutes} min left</small></div><button data-un="${esc(m.name)}" class="btn sec" style="width:auto;padding:6px 10px">Unmute</button></div>`).join(""):`<div class="sub">Nobody's muted right now.</div>`
+$("#muteslist").querySelectorAll("[data-un]").forEach(b=>b.onclick=async()=>{await unmuteUser(b.dataset.un);loadMutes()})
+}).catch(()=>{$("#muteslist").textContent="Couldn't load mutes."})}
+loadMutes()
+loadReports()
 }

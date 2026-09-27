@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#0e0c13">
+<title>Vael</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0e0c13;--bg2:#17131f;--bg3:#1e1829;--panel:#15111d;--line:#2a2436;--primary:#3c2f51;--primary-l:#5b4a7a;--text:#e8e3f0;--dim:#8b8299;--sans:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif;--mono:'JetBrains Mono',ui-monospace,Menlo,Consolas,monospace}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:100%;max-width:400px;text-align:center}
+.mark{width:56px;height:56px;border-radius:16px;background:var(--primary);display:grid;place-items:center;margin:0 auto 22px;font-weight:700;font-size:20px}
+.code{font:600 15px var(--mono);color:var(--dim);letter-spacing:.04em;margin-bottom:14px}
+h1{font-size:24px;font-weight:700;margin-bottom:10px}
+p{color:var(--dim);font-size:15px;line-height:1.5;margin-bottom:24px}
+.path{display:inline-block;max-width:100%;margin-bottom:24px;padding:8px 14px;border-radius:8px;background:var(--bg2);border:1px solid var(--line);font:13px var(--mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 22px;border-radius:10px;background:var(--primary);color:#fff;text-decoration:none;font-weight:600;font-size:14.5px;transition:background .15s}
+.btn:hover{background:var(--primary-l)}
+:focus-visible{outline:2px solid var(--primary-l);outline-offset:2px}
+</style>
+</head>
+<body>
+<div class="card">
+<p class="code">404</p>
+<h1>Nothing here</h1>
+<p>This page doesn't exist in Vael. The link might be old or mistyped.</p>
+<span class="path" id="path"></span>
+<div><a class="btn" id="home" href="/">Back to Vael</a></div>
+</div>
+<script>
+document.getElementById("path").textContent=location.pathname+location.search
+var seg=location.pathname.split("/").filter(Boolean)[0]
+if(location.hostname.endsWith("github.io")&&seg){
+fetch("/"+seg+"/index.html",{method:"HEAD"}).then(function(r){
+if(r.ok)document.getElementById("home").href="/"+seg+"/"
+}).catch(function(){})
+}
+</script>
+</body>
+</html>

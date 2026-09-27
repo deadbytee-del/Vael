@@ -82,14 +82,14 @@ if(!state.shellBuilt){app.innerHTML="";buildShell();state.shellBuilt=true;startS
 renderMain()
 }
 function renderGateSignIn(){
-const w=el("div","gate",`<div class="gatebox"><div class="mark">V</div><h1>Welcome to Vael</h1><p>VaelKits' own chat. Sign in with your Puter account to get started.</p><button class="btn pri" id="si">Sign in with Puter</button></div></div>`)
+const w=el("div","gate",`<div class="gatebox"><h1>Welcome to Vael</h1><p>VaelKits' own chat. Sign in with your Puter account to get started.</p><button class="btn pri" id="si">Sign in with Puter</button></div></div>`)
 app.append(w)
 $("#si").onclick=async()=>{
 try{await puterSignIn();await loadIdentity();render()}
 catch(e){toast("Sign-in was cancelled or failed")}}
 }
 function renderGateNoServer(){
-app.append(el("div","gate",`<div class="gatebox"><div class="mark">V</div><h1>Not connected yet</h1><p>This copy of Vael has no VaelHook server configured. Set DEFAULT_API_BASE in config.js to your VaelHook address and redeploy.</p></div></div>`))
+app.append(el("div","gate",`<div class="gatebox"><h1>Not connected yet</h1><p>This copy of Vael has no VaelHook server configured. Set DEFAULT_API_BASE in config.js to your VaelHook address and redeploy.</p></div></div>`))
 }
 function renderGateUnlock(){
 const w=el("div","gate",`<div class="gatebox"><div class="mark">${ICONS.lock}</div><h1>Unlock Vael</h1><p>Confirm it's you with the passkey you set up on this device.</p><button class="btn pri" id="unl">Unlock with passkey</button><p class="gerr hidden" id="uerr" style="margin-top:12px"></p></div></div>`)
@@ -132,7 +132,7 @@ return{name:"channel",channel:"general"}
 }
 function buildShell(){
 app.append(el("div","app",`
-<div class="rail"><div class="mark">V</div><div class="sep"></div><div class="dot" id="raildot" title="Server status"></div></div>
+<div class="rail"><div class="dot" id="raildot" title="Server status"></div></div>
 <div class="sidebar" id="sidebar">
 <div class="status" id="statusbox"></div>
 <div class="sidebar-scroll">

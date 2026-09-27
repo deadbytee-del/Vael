@@ -5,7 +5,8 @@ outbox:"++localId,channel,ts",
 drafts:"channel",
 settings:"key",
 blocks:"name",
-profileCache:"name"
+profileCache:"name",
+memberCache:"name"
 })
 async function cacheMessages(channel,arr){
 if(!arr.length)return
@@ -38,3 +39,17 @@ if(r){await db.blocks.delete(low);return false}
 await db.blocks.put({name:low})
 return true}
 async function listBlocks(){return db.blocks.toArray()}
+async function cacheMembers(names){
+await db.memberCache.clear()
+await db.memberCache.bulkPut(names.map(name=>({name})))
+}
+async function getCachedMembers(){
+return (await db.memberCache.toArray()).map(r=>r.name)
+}
+async function pruneLocalMessages(maxAgeDays){
+const cutoff=Date.now()-maxAgeDays*86400000
+const old=await db.messages.where("ts").below(cutoff).toArray()
+const ids=old.filter(m=>!m.pinned).map(m=>[m.channel,m.id])
+if(ids.length)await db.messages.bulkDelete(ids)
+return ids.length
+}

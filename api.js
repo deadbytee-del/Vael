@@ -32,8 +32,8 @@ if(limit)q.set("limit",limit)
 const qs=q.toString()
 return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages"+(qs?"?"+qs:""))
 }
-async function postMessage(channel,content,replyTo){
-return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages",{method:"POST",body:JSON.stringify({content,replyTo:replyTo||null})})
+async function postMessage(channel,content,replyTo,attachment){
+return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages",{method:"POST",body:JSON.stringify({content,replyTo:replyTo||null,attachment:attachment||null})})
 }
 async function deleteMessage(channel,id){
 return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages/"+encodeURIComponent(id),{method:"DELETE"})
@@ -55,4 +55,16 @@ async function pinMessage(channel,id){return apiFetch("/api/channels/"+encodeURI
 async function unpinMessage(channel,id){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/messages/"+encodeURIComponent(id)+"/pin",{method:"DELETE"})}
 async function getPins(channel){return apiFetch("/api/channels/"+encodeURIComponent(channel)+"/pins")}
 async function resolveReport(id){return apiFetch("/api/reports/"+encodeURIComponent(id)+"/resolve",{method:"POST"})}
+function fileToBase64(file){
+return new Promise((resolve,reject)=>{
+const r=new FileReader()
+r.onload=()=>resolve(r.result.split(",")[1])
+r.onerror=reject
+r.readAsDataURL(file)
+})}
+async function uploadImage(file){
+const data=await fileToBase64(file)
+return apiFetch("/api/upload",{method:"POST",body:JSON.stringify({type:file.type,data})})
+}
+async function getAltClusters(){return apiFetch("/api/altcheck")}
 async function getReports(all){return apiFetch("/api/reports"+(all?"?all=1":""))}

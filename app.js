@@ -10,6 +10,8 @@ bug:svg('<rect x="8" y="8" width="8" height="12" rx="4"/><path d="M12 8V4M8 12H4
 pin:svg('<path d="M12 2l3 3-1.5 5L19 15l-6 1-4 6-1-6-5-1 5-4.5L9.5 4z"/>'),
 kick:svg('<path d="M15 3h4v4M19 3l-7 7"/><path d="M9 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/>'),
 check:svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>'),
+bell:svg('<path d="M6 8a6 6 0 0 1 12 0c0 4 1.5 5.5 2 6H4c.5-.5 2-2 2-6z"/><path d="M9.5 17a2.5 2.5 0 0 0 5 0"/>'),
+home:svg('<path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/><path d="M10 19v-5h4v5"/>'),
 send:svg('<path d="M5 12h14M13 6l6 6-6 6"/>'),
 reply:svg('<path d="M9 14l-5-5 5-5"/><path d="M4 9h9a6 6 0 0 1 6 6v2"/>'),
 trash:svg('<path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/>'),
@@ -28,7 +30,7 @@ key:svg('<circle cx="8" cy="12" r="4"/><path d="M11 12h10M17 12v4M21 12v3"/>'),
 back:svg('<path d="M15 6l-6 6 6 6"/>'),
 menu:svg('<path d="M4 6h16M4 12h16M4 18h16"/>')
 }
-const state={puterUser:null,link:null,profile:{displayName:"",bio:""},avatar:null,channels:[],dms:[],status:{online:false,playerCount:0,maxPlayers:0,version:""},players:[],staff:false,route:{name:"gate"},pollTimers:[],p2pActive:false}
+const state={puterUser:null,link:null,profile:{displayName:"",bio:""},avatar:null,channels:[],dms:[],status:{online:false,playerCount:0,maxPlayers:0,version:""},players:[],allMembers:[],staff:false,route:{name:"gate"},pollTimers:[],p2pActive:false}
 const $=s=>document.querySelector(s)
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!==undefined)e.innerHTML=h;return e}
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))
@@ -131,38 +133,93 @@ code.onkeydown=e=>{if(e.key==="Enter")submit()}
 }
 function currentRoute(){
 const h=(location.hash.slice(1)||"").split("/").filter(Boolean)
+if(h[0]==="home")return{name:"home"}
 if(h[0]==="c"&&h[1])return{name:"channel",channel:h[1]}
 if(h[0]==="dm"&&h[1])return{name:"dm",withName:h[1]}
 if(h[0]==="settings")return{name:"settings",tab:h[1]||"profile"}
-return{name:"channel",channel:"general"}
+return{name:"home"}
 }
 function buildShell(){
-app.append(el("div","app",`
-<button class="mobiletoggle" id="mobiletoggle">${ICONS.menu||svg('<path d="M4 6h16M4 12h16M4 18h16"/>')}</button>
+app.append(el("div","shell",`
+<div class="topbar">
+<div class="tb-left"><span class="topbrand">Vael</span><span class="topstatus" id="topstatus"></span></div>
+<div class="tb-search"><input id="searchbox" placeholder="Search messages" autocomplete="off">${ICONS.search}<div class="searchpanel hidden" id="searchpanel"></div></div>
+<div class="tb-right">
+<button class="topicon" id="notifbtn" title="Notifications">${ICONS.bell}<span class="nbadge hidden" id="nbadge">0</span><div class="notifpanel hidden" id="notifpanel"></div></button>
+<div class="topprofile" id="topprofile"></div>
+</div>
+</div>
+<div class="body3">
+<button class="mobiletoggle" id="mobiletoggle">${ICONS.menu}</button>
 <div class="sidebar" id="sidebar">
-<div class="brand">Vael</div>
-<div class="status" id="statusbox"></div>
 <div class="sidebar-scroll">
+<div class="navlist" style="padding:12px 8px 4px"><a class="navitem" href="#/home" id="homelink">${ICONS.home}<span>Home</span></a></div>
 <div id="channelgroups"></div>
 <div class="navgroup"><div class="navgroup-head"><h4>Direct messages</h4><button class="addbtn" id="newdm">${ICONS.plus}</button></div><div class="navlist" id="dmnav"></div></div>
 </div>
-<div class="me" id="mebar"></div>
 </div>
 <div class="sidebar-scrim" id="scrim"></div>
 <div class="main" id="main"></div>
+<div class="rightbar" id="rightbar"></div>
+</div>
 `))
-renderMe()
+renderProfileButton()
 $("#newdm").onclick=openDmPicker
 $("#mobiletoggle").onclick=()=>{$("#sidebar").classList.toggle("open");$("#scrim").classList.toggle("show")}
 $("#scrim").onclick=()=>{$("#sidebar").classList.remove("open");$("#scrim").classList.remove("show")}
+wireSearch()
+wireNotifs()
 refreshChannelsAndDms()
 }
-function renderMe(){
-const box=$("#mebar")
-box.innerHTML=`<img src="${state.avatar||fallbackAvatar()}"><div class="who"><b>${esc(state.profile.displayName||state.link.name)}</b><small>${esc(state.link.name)}</small></div><a href="#/settings" title="Settings">${iconBtn("gear")}</a><button id="logoutbtn" title="Sign out">${ICONS.logout}</button>`
-box.querySelector('a[href="#/settings"]').className="navitem"
-box.querySelector('a[href="#/settings"]').style.cssText="padding:6px;border-radius:8px"
-$("#logoutbtn").onclick=async()=>{await puterSignOut();state.puterUser=null;state.shellBuilt=false;render()}
+function wireSearch(){
+const input=$("#searchbox"),panel=$("#searchpanel")
+let t=null
+input.oninput=()=>{
+clearTimeout(t)
+t=setTimeout(async()=>{
+const q=input.value.trim()
+if(!q){panel.classList.add("hidden");return}
+const results=await searchMessages(q)
+panel.innerHTML=results.length?results.map(m=>{
+const isDmc=m.channel.startsWith("dm-")
+const label=isDmc?otherFromDm(m.channel,state.link.name):("#"+(CHANNEL_META[m.channel]?CHANNEL_META[m.channel].label:m.channel))
+return `<div class="searchresult" data-channel="${esc(m.channel)}" data-dm="${isDmc?1:0}"><b>${esc(label)}</b><small>${esc(m.authorName)}: ${esc(m.content.slice(0,80))}</small></div>`
+}).join(""):`<div class="searchempty">No messages match "${esc(q)}"</div>`
+panel.classList.remove("hidden")
+panel.querySelectorAll(".searchresult").forEach(r=>r.onclick=()=>{
+panel.classList.add("hidden");input.value=""
+location.hash=r.dataset.dm==="1"?"#/dm/"+r.dataset.channel.replace(/^dm-/,"").split("-").find(n=>n.toLowerCase()!==state.link.name.toLowerCase())||otherFromDm(r.dataset.channel,state.link.name):"#/c/"+r.dataset.channel
+})
+},220)}
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".tb-search"))panel.classList.add("hidden")})
+}
+function wireNotifs(){
+const btn=$("#notifbtn"),panel=$("#notifpanel")
+refreshNotifBadge()
+btn.onclick=async(e)=>{
+e.stopPropagation()
+panel.classList.toggle("hidden")
+if(!panel.classList.contains("hidden")){
+const list=await listNotifs()
+panel.innerHTML=list.length?list.map(n=>`<a class="notifitem" href="${n.dm?"#/dm/"+n.from:"#/c/"+n.channel}"><b>${esc(n.from)}</b><small>${esc(n.preview)}</small><span class="ntime">${timeFmt(n.ts)}</span></a>`).join(""):`<div class="searchempty">You're all caught up.</div>`
+await markNotifsRead()
+refreshNotifBadge()
+}}
+document.addEventListener("pointerdown",e=>{if(!e.target.closest("#notifbtn"))panel.classList.add("hidden")})
+}
+async function refreshNotifBadge(){
+const n=await unreadNotifCount()
+const b=$("#nbadge")
+if(!b)return
+b.textContent=n>9?"9+":n
+b.classList.toggle("hidden",n===0)
+}
+function renderProfileButton(){
+const box=$("#topprofile")
+box.innerHTML=`<button id="profbtn"><img src="${state.avatar||fallbackAvatar()}"><span>${esc(state.profile.displayName||state.link.name)}</span></button><div class="profmenu hidden" id="profmenu"><a href="#/settings">${ICONS.gear}Settings</a><button id="signoutbtn">${ICONS.logout}Sign out</button></div>`
+$("#profbtn").onclick=e=>{e.stopPropagation();$("#profmenu").classList.toggle("hidden")}
+$("#signoutbtn").onclick=async()=>{await puterSignOut();state.puterUser=null;state.shellBuilt=false;render()}
+document.addEventListener("pointerdown",e=>{if(!e.target.closest(".topprofile"))$("#profmenu").classList.add("hidden")})
 }
 function iconBtn(name){return ICONS[name]}
 function fallbackAvatar(){
@@ -174,14 +231,26 @@ const[chans,dms,players,members]=await Promise.all([getChannels(),listDms(),getP
 state.channels=chans
 state.dms=dms.map(id=>otherFromDm(id,state.link.name))
 state.players=players
+state.allMembers=members.map(m=>m.name)
 state.staff=chans.some(c=>c.name==="staff")
 cacheMembers(Array.from(new Set(members.map(m=>m.name).concat(state.dms))))
 renderNav()
+renderMembers()
+renderHomeTiles()
 if(state.route&&(state.route.name==="channel"||state.route.name==="dm")){
 const ch=state.route.name==="dm"?store_dm_channel(state.route.withName):state.route.channel
 getCachedMessages(ch,300).then(list=>renderMessages(list,ch))
 }
 }catch(e){}
+}
+function renderMembers(){
+const box=$("#rightbar")
+if(!box)return
+const onlineNames=new Set(state.players.map(p=>p.name.toLowerCase()))
+const offline=state.allMembers.filter(n=>!onlineNames.has(n.toLowerCase()))
+const row=(name,uuid,online)=>`<div class="memberrow${online?"":" off"}"><img src="${mcHead(uuid||name)}"><span class="mdot${online?" on":""}"></span><span class="mname" data-profile="${esc(name)}">${esc(name)}</span></div>`
+box.innerHTML=`<div class="rbgroup"><h4>Online — ${state.players.length}</h4>${state.players.map(p=>row(p.name,p.uuid,true)).join("")}</div><div class="rbgroup"><h4>Offline — ${offline.length}</h4>${offline.map(n=>row(n,null,false)).join("")}</div>`
+box.querySelectorAll("[data-profile]").forEach(el=>el.onclick=()=>openProfilePopover(el.dataset.profile,el))
 }
 function otherFromDm(dmId,me){
 const rest=dmId.replace(/^dm-/,"")
@@ -190,6 +259,7 @@ if(rest.startsWith(low+"-"))return rest.slice(low.length+1)
 return rest.slice(0,rest.length-low.length-1)
 }
 function renderNav(){
+if($("#homelink"))$("#homelink").classList.toggle("on",state.route.name==="home")
 const groups={}
 state.channels.forEach(c=>{
 const meta=CHANNEL_META[c.name]||{label:c.name,icon:"chat",group:"Other"}
@@ -215,21 +285,87 @@ const tick=async()=>{
 try{
 state.status=await getStatus()
 if(state.p2pActive)exitP2PMode()
-$("#statusbox").innerHTML=`<div class="row1"><span class="led on"></span>${state.status.playerCount}/${state.status.maxPlayers} online</div><div class="meta">${esc(state.status.version||"")}</div><div class="ip"><span>${esc(SERVER_IP)}</span><button title="Copy IP" id="copyip">${ICONS.copy}</button></div>`
-const b=$("#copyip");if(b)b.onclick=()=>{navigator.clipboard.writeText(SERVER_IP).then(()=>toast("Server IP copied"))}
+renderTopStatus(true)
+renderHomeStatusCard()
 }catch(e){
 if(!state.p2pActive)enterP2PMode()
-renderP2PStatus()
+renderTopStatus(false)
+renderHomeStatusCard()
 }}
 tick()
 state.pollTimers.push(setInterval(tick,15000))
-state.pollTimers.push(setInterval(refreshChannelsAndDms,20000))
+state.pollTimers.push(setInterval(()=>{refreshChannelsAndDms();pollDmNotifications();pollChannelMentions()},20000))
+}
+function renderTopStatus(up){
+const el=$("#topstatus")
+if(!el)return
+if(up)el.innerHTML=`<span class="tled on"></span>${state.status.playerCount}/${state.status.maxPlayers} online`
+else el.innerHTML=`<span class="tled warn"></span>Offline · P2P ${p2pCount()}`
+}
+function renderHomeTiles(){
+const grid=$("#hometiles")
+if(!grid)return
+grid.innerHTML=state.channels.map(c=>{
+const meta=CHANNEL_META[c.name]||{label:c.name,desc:"",icon:"chat"}
+return `<a class="hometile" href="#/c/${c.name}"><span class="ico">${ICONS[meta.icon]||ICONS.chat}</span><b>${esc(meta.label)}</b><small>${esc(meta.desc||"")}</small></a>`
+}).join("")
+}
+async function renderHome(main){
+main.innerHTML=`<div class="homewrap">
+<h1 class="homehi">Welcome to Vael</h1>
+<p class="homesub">VaelKits' own space to chat. Pick a channel or jump back into a conversation.</p>
+<div class="homestatuscard" id="homestatuscard">Checking server status…</div>
+<h3 class="hometilehead">Jump to a channel</h3>
+<div class="hometiles" id="hometiles"></div>
+</div>`
+renderHomeStatusCard()
+renderHomeTiles()
 }
 function renderP2PStatus(){
-const box=$("#statusbox")
-if(!box)return
+renderTopStatus(false)
+renderHomeStatusCard()
+}
+function renderHomeStatusCard(){
+const c=$("#homestatuscard")
+if(!c)return
+if(state.p2pActive){
 const n=p2pCount()
-box.innerHTML=`<div class="row1"><span class="led warn"></span>Server offline</div><div class="meta">Peer-to-peer: ${n} ${n===1?"person":"people"} reachable</div>`
+c.innerHTML=`<div class="hsrow"><span class="led warn"></span><b>Server offline</b></div><p class="hsmeta">Running in peer-to-peer mode: ${n} ${n===1?"person":"people"} reachable directly.</p>`
+return}
+c.innerHTML=`<div class="hsrow"><span class="led on"></span><b>${state.status.playerCount}/${state.status.maxPlayers} players online</b></div><p class="hsmeta">${esc(state.status.version||"")}</p><div class="ip"><span>${esc(SERVER_IP)}</span><button title="Copy IP" id="homecopyip">${ICONS.copy}</button></div>`
+const b=$("#homecopyip");if(b)b.onclick=()=>{navigator.clipboard.writeText(SERVER_IP).then(()=>toast("Server IP copied"))}
+}
+async function pollDmNotifications(){
+for(const name of state.dms){
+const channel=store_dm_channel(name)
+const viewing=state.route.name==="dm"&&state.route.withName.toLowerCase()===name.toLowerCase()
+if(viewing)continue
+try{
+const since=await latestTs(channel)
+const fresh=await getMessages(channel,since,20)
+if(fresh.length){
+await cacheMessages(channel,fresh)
+const last=fresh[fresh.length-1]
+if(last.authorName.toLowerCase()!==state.link.name.toLowerCase()){
+await addNotif({ts:last.ts,from:last.authorName,dm:true,preview:last.content.slice(0,80)})
+refreshNotifBadge()}}
+}catch(e){}}
+}
+async function pollChannelMentions(){
+for(const c of state.channels){
+const viewing=state.route.name==="channel"&&state.route.channel===c.name
+if(viewing)continue
+try{
+const since=await latestTs(c.name)
+const fresh=await getMessages(c.name,since,50)
+if(fresh.length){
+await cacheMessages(c.name,fresh)
+for(const m of fresh){
+if(m.authorName.toLowerCase()===state.link.name.toLowerCase())continue
+if(new RegExp("@"+state.link.name+"\\b","i").test(m.content)){
+await addNotif({ts:m.ts,from:m.authorName,channel:c.name,preview:m.content.slice(0,80)})
+refreshNotifBadge()}}}
+}catch(e){}}
 }
 async function enterP2PMode(){
 state.p2pActive=true
@@ -262,12 +398,14 @@ if(wasBottom)scrollBottom()
 function renderMain(){
 state.route=currentRoute()
 renderNav()
-const sb=$("#sidebar"),sc=$("#scrim")
+const sb=$("#sidebar"),sc=$("#scrim"),rb=$("#rightbar")
 if(sb){sb.classList.remove("open")}
 if(sc){sc.classList.remove("show")}
+if(rb)rb.classList.toggle("hidden",state.route.name==="settings")
 const main=$("#main")
 main.innerHTML=""
 clearViewTimer()
+if(state.route.name==="home"){renderHome(main);return}
 if(state.route.name==="settings"){renderSettings(main,state.route.tab);return}
 if(state.route.name==="dm"){renderConversation(main,store_dm_channel(state.route.withName),state.route.withName,true);return}
 renderConversation(main,state.route.channel,null,false)
@@ -541,12 +679,12 @@ $("#avbtn").onclick=()=>$("#avfile").click()
 $("#avfile").onchange=async e=>{
 const f=e.target.files[0]
 if(!f)return
-try{const url=await saveAvatarFromFile(f);state.avatar=url;$("#avprev").src=url;renderMe();toast("Avatar updated")}
+try{const url=await saveAvatarFromFile(f);state.avatar=url;$("#avprev").src=url;renderProfileButton();toast("Avatar updated")}
 catch(err){toast(err.message||"Couldn't use that image")}}
 $("#savep").onclick=async()=>{
 state.profile={displayName:$("#dname").value.trim(),bio:$("#dbio").value.trim()}
 await saveProfile(state.profile)
-renderMe()
+renderProfileButton()
 toast("Profile saved")}
 $("#unlink").onclick=async()=>{
 await clearLink()

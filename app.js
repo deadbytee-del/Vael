@@ -21,7 +21,8 @@ copy:svg('<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 
 mail:svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'),
 lock:svg('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>'),
 key:svg('<circle cx="8" cy="12" r="4"/><path d="M11 12h10M17 12v4M21 12v3"/>'),
-back:svg('<path d="M15 6l-6 6 6 6"/>')
+back:svg('<path d="M15 6l-6 6 6 6"/>'),
+menu:svg('<path d="M4 6h16M4 12h16M4 18h16"/>')
 }
 const state={puterUser:null,link:null,profile:{displayName:"",bio:""},avatar:null,channels:[],dms:[],status:{online:false,playerCount:0,maxPlayers:0,version:""},players:[],staff:false,route:{name:"gate"},pollTimers:[]}
 const $=s=>document.querySelector(s)
@@ -132,19 +133,23 @@ return{name:"channel",channel:"general"}
 }
 function buildShell(){
 app.append(el("div","app",`
-<div class="rail"><div class="dot" id="raildot" title="Server status"></div></div>
+<button class="mobiletoggle" id="mobiletoggle">${ICONS.menu||svg('<path d="M4 6h16M4 12h16M4 18h16"/>')}</button>
 <div class="sidebar" id="sidebar">
+<div class="brand">Vael</div>
 <div class="status" id="statusbox"></div>
 <div class="sidebar-scroll">
-<div class="navgroup"><div class="navgroup-head"><h4>Channels</h4></div><div class="navlist" id="channelnav"></div></div>
+<div id="channelgroups"></div>
 <div class="navgroup"><div class="navgroup-head"><h4>Direct messages</h4><button class="addbtn" id="newdm">${ICONS.plus}</button></div><div class="navlist" id="dmnav"></div></div>
 </div>
 <div class="me" id="mebar"></div>
 </div>
+<div class="sidebar-scrim" id="scrim"></div>
 <div class="main" id="main"></div>
 `))
 renderMe()
 $("#newdm").onclick=openDmPicker
+$("#mobiletoggle").onclick=()=>{$("#sidebar").classList.toggle("open");$("#scrim").classList.toggle("show")}
+$("#scrim").onclick=()=>{$("#sidebar").classList.remove("open");$("#scrim").classList.remove("show")}
 refreshChannelsAndDms()
 }
 function renderMe(){
@@ -179,17 +184,22 @@ if(rest.startsWith(low+"-"))return rest.slice(low.length+1)
 return rest.slice(0,rest.length-low.length-1)
 }
 function renderNav(){
-const cnav=$("#channelnav")
-cnav.innerHTML=state.channels.map(c=>{
-const meta=CHANNEL_META[c.name]||{label:c.name,icon:"chat"}
+const groups={}
+state.channels.forEach(c=>{
+const meta=CHANNEL_META[c.name]||{label:c.name,icon:"chat",group:"Other"}
+;(groups[meta.group]=groups[meta.group]||[]).push({c,meta})
+})
+const order=CHANNEL_GROUP_ORDER.concat(Object.keys(groups).filter(g=>!CHANNEL_GROUP_ORDER.includes(g)))
+$("#channelgroups").innerHTML=order.filter(g=>groups[g]).map(g=>`
+<div class="navgroup"><div class="navgroup-head"><h4>${esc(g)}</h4></div><div class="navlist">${groups[g].map(({c,meta})=>{
 const active=state.route.name==="channel"&&state.route.channel===c.name
 return `<a class="navitem${active?" on":""}" href="#/c/${c.name}">${ICONS[meta.icon]||ICONS.chat}<span>${esc(meta.label)}</span>${c.name==="staff"?`<span class="lock">${ICONS.lock}</span>`:""}</a>`
-}).join("")
+}).join("")}</div></div>`).join("")
 const dnav=$("#dmnav")
 dnav.innerHTML=state.dms.length?state.dms.map(name=>{
 const active=state.route.name==="dm"&&state.route.withName.toLowerCase()===name.toLowerCase()
 return `<a class="navitem${active?" on":""}" href="#/dm/${name}"><img class="av" src="${mcHead(name)}">${esc(name)}</a>`
-}).join(""):`<div style="padding:8px 10px;color:var(--dim2);font-size:12.5px">No DMs yet</div>`
+}).join(""):`<div class="dmempty">Message someone from a channel, or use + above.</div>`
 }
 function mcHead(nameOrUuid){
 return `https://mc-heads.net/avatar/${encodeURIComponent(nameOrUuid)}/32`
@@ -198,11 +208,9 @@ function startStatusPoll(){
 const tick=async()=>{
 try{
 state.status=await getStatus()
-$("#raildot").classList.toggle("on",true)
 $("#statusbox").innerHTML=`<div class="row1"><span class="led on"></span>${state.status.playerCount}/${state.status.maxPlayers} online</div><div class="meta">${esc(state.status.version||"")}</div><div class="ip"><span>${esc(SERVER_IP)}</span><button title="Copy IP" id="copyip">${ICONS.copy}</button></div>`
 const b=$("#copyip");if(b)b.onclick=()=>{navigator.clipboard.writeText(SERVER_IP).then(()=>toast("Server IP copied"))}
 }catch(e){
-$("#raildot").classList.remove("on")
 $("#statusbox").innerHTML=`<div class="row1"><span class="led"></span>Server unreachable</div>`
 }}
 tick()
@@ -212,6 +220,9 @@ state.pollTimers.push(setInterval(refreshChannelsAndDms,20000))
 function renderMain(){
 state.route=currentRoute()
 renderNav()
+const sb=$("#sidebar"),sc=$("#scrim")
+if(sb){sb.classList.remove("open")}
+if(sc){sc.classList.remove("show")}
 const main=$("#main")
 main.innerHTML=""
 clearViewTimer()

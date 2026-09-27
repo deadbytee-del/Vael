@@ -6,7 +6,8 @@ drafts:"channel",
 settings:"key",
 blocks:"name",
 profileCache:"name",
-memberCache:"name"
+memberCache:"name",
+notifs:"++id,ts,read"
 })
 async function cacheMessages(channel,arr){
 if(!arr.length)return
@@ -52,4 +53,23 @@ const old=await db.messages.where("ts").below(cutoff).toArray()
 const ids=old.filter(m=>!m.pinned).map(m=>[m.channel,m.id])
 if(ids.length)await db.messages.bulkDelete(ids)
 return ids.length
+}
+async function searchMessages(text){
+const q=text.trim().toLowerCase()
+if(!q)return[]
+const all=await db.messages.toArray()
+return all.filter(m=>m.content&&m.content.toLowerCase().includes(q)).sort((a,b)=>b.ts-a.ts).slice(0,50)
+}
+async function addNotif(n){
+return db.notifs.add({...n,read:false})
+}
+async function unreadNotifCount(){
+return db.notifs.where("read").equals(0).count()
+}
+async function listNotifs(){
+return (await db.notifs.orderBy("ts").reverse().limit(30).toArray())
+}
+async function markNotifsRead(){
+const unread=await db.notifs.where("read").equals(0).toArray()
+await db.notifs.bulkPut(unread.map(n=>({...n,read:true})))
 }
